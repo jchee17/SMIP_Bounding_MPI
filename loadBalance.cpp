@@ -28,26 +28,8 @@ double optimization_time_main_start = get_cpu_time();
 	MPI_Status status;
 
 	/* Input Reading */	
-	std::string 	PROBLEM_CLASS 			= argv[1];
-	std::string 	PARAMETER_FILE 			= argv[2];
-	int 		N_INSTANCES 			= atoi(argv[3]);
-	std::string 	RESULT_FILE 			= argv[4];
-	int 		MAX_NUM_NODES_IN_A_PROBLEM 	= atoi(argv[5]);
-	int 		LB_STOP_CR 			= atoi(argv[6]);
-	double		LB_STOP_TH 			= atof(argv[7]);
-	std::string 	PARTITION_FILE 			= argv[8];
-	std::string 	EXE_BOUNDING 			= argv[9];
-	int 		N_SUBPROBLEMS 			= atoi(argv[10]);
-	double 	UB_FRACTION 			= atof(argv[11]);
-	int 		UB_SEED 			= atoi(argv[12]);
-	int 		UB_STOP_CR 			= atoi(argv[13]);
-	double		UB_STOP_TH 			= atof(argv[14]);
-	int 		UB_SOL_TYPE 			= atoi(argv[15]);
-	int		UB_SOL_PARAM 			= atoi(argv[16]);
-	int		SOLVE_FULL_PROB			= atoi(argv[17]);
-	int		EQUALLY_LIKELY_SCENARIOS	= atoi(argv[18]);
-	int		UNIFORM_MULTIPLICITY		= atoi(argv[19]);
-	int		CALCULATE_EEV			= atoi(argv[20]);
+	// Read inputs, related to the problem
+	
 
 	/* EGSO SETUP
 	 * --------------------------------------------------------------------------
@@ -77,24 +59,6 @@ double optimization_time_main_start = get_cpu_time();
 	MPI_Datatype obj_type;	
 	MPI_Type_struct(3,  blocks,  displacements, types, &obj_type);	
 	MPI_Type_commit(&obj_type);
-
-	/* MPI struct for passing three variables: int, int double
-		 int blocks[3]={1,1,1};
-		 MPI_Datatype types[3]={MPI_INT, MPI_INT, MPI_DOUBLE};
-		 MPI_Aint displacements[3];
-
-		 MPI_Aint intex, doublex;
-		 MPI_Type_extent(MPI_INT,  &intex);
-	//	MPI_Type_extent(MPI_DOUBLE,  &doublex); 
-
-	displacements[0]  =  static_cast<MPI_Aint>(0); 
-	displacements[1]  =  intex; 
-	displacements[2]  =  intex+intex;
-
-	MPI_Datatype obj_type;	
-	MPI_Type_struct(3,  blocks,  displacements, types, &obj_type);	
-	MPI_Type_commit(&obj_type);
-	*/
 
 	int i, msg;
 	int next_SP, n_shutdown, num_switch_mode;
@@ -126,6 +90,11 @@ double optimization_time_main_start = get_cpu_time();
 
 	/* We have 2 custom structs. One for master_to_worker communication
 	 * and the other for worker_to_master communication.  */
+
+	/* compiler commands to pack the struct, 
+	 * in order to prevent it from being cut off
+	 * when using MPI_Send()
+	 */
 #pragma pack(push,1)
 	typedef struct
 	{
@@ -248,57 +217,6 @@ double optimization_time_main_start = get_cpu_time();
 				indicator_efgs[SP_indices[N_SUBPROBLEMS-i-1]] = UB_SOL_TYPE; //the last n_efgs entries in the shuffled SP_indices will compute EFGS
 		}
 
-		/* I comment out the bounding code for EFGS MASTER because I am only testing my parallel upper bounding
-		 * code right now */
-		/* 
-
-		// send out the next sub-problem when a worker asks for one
-		next_SP = 0;
-		while (next_SP < N_SUBPROBLEMS){
-			// wait until we get a request from a worker
-			MPI_Recv(&msg, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-
-			// find out who asked for a new sub-problem
-			int requestor = status.MPI_SOURCE;
-
-			if (msg != REQUEST)
-				n_completed++;
-
-			if (N_SUBPROBLEMS - n_completed < nproc-1)
-				n_inprogress = N_SUBPROBLEMS - n_completed;
-
-
-			// for loadbalancing purposes, we want the longer running problems assigned first
-			// any subproblem that also computes efgs necessary has a longer runtime than that only computes egso
-			// so we first solve all subproblems that require computing efgs
-			param.block_id = SP_indices[next_SP];
-
-			// indicate if this subproblem should also compute efgs
-			param.EFGS_type = indicator_efgs[param.block_id];
-			//			std::cout << "next_SP:" <<next_SP << "\tindicator_efgs[next_sP]:" << indicator_efgs[next_SP] << std::endl;
-			std::cout << "no. to solve= " << N_SUBPROBLEMS - n_completed << "\tno in progress= " << n_inprogress << "\tnext_SP= " << next_SP << std::endl;
-
-			// set up the EEV_indicator only for the first subproblem for which EFGS is not calculated, then turn it off
-			if (CALCULATE_EEV == 1 and param.EFGS_type == 0)
-			{
-				param.EEV_indicator = 1;
-				CALCULATE_EEV = 0;
-			}
-			else
-			{
-				param.EEV_indicator = 0;
-			}
-
-			//			std::cout << "next_SP:" << next_SP << "\tparam.EEV_indicator:" << param.EEV_indicator << std::endl;
-
-			// send the requestor a new sub-problem to solve
-			MPI_Send(&param, 1, obj_type, requestor, 0, MPI_COMM_WORLD);
-
-			// we have sent a sub-problem to another worker
-			next_SP++;
-		}
-		*/
-
 		/* Send SWITCH_EFGS_SIGNAL to all worker nodes */
 		num_switch_mode = 0;
 		while (num_switch_mode < num_workers) 
@@ -373,71 +291,7 @@ double optimization_time_main_start = get_cpu_time();
 			parameter_file << PARAMETER_FILE << "." << rank;
 			result_file << RESULT_FILE << "." << rank;
 			partition_file << PARTITION_FILE << "." << rank;
-			/*
-			ScenarioTree stree = generate_ScenarioTree(
-					PROBLEM_CLASS.c_str(),
-					parameter_file.str().c_str(),
-					N_INSTANCES,
-					result_file.str().c_str(),
-					MAX_NUM_NODES_IN_A_PROBLEM,
-					LB_STOP_CR,
-					LB_STOP_TH,
-					partition_file.str().c_str(),
-					block_id, 
-					EFGS_type, 
-					UB_STOP_CR,
-					UB_STOP_TH,
-					UB_SOL_PARAM,
-					rank,
-					SOLVE_FULL_PROB,
-					EQUALLY_LIKELY_SCENARIOS,
-					UNIFORM_MULTIPLICITY,
-					CALCULATE_EEV);
-		*/
-
-			/* Testing Queue functions */
-			if (Queue_diagnostics == true)
-			{
-				printf("about to call test_Queue()\n");
-				test_Queue(
-						PROBLEM_CLASS.c_str(),
-						parameter_file.str().c_str(),
-						N_INSTANCES,
-						result_file.str().c_str(),
-						MAX_NUM_NODES_IN_A_PROBLEM,
-						LB_STOP_CR,
-						LB_STOP_TH,
-						partition_file.str().c_str(),
-						block_id, 
-						EFGS_type, 
-						UB_STOP_CR,
-						UB_STOP_TH,
-						UB_SOL_PARAM,
-						rank,
-						SOLVE_FULL_PROB,
-						EQUALLY_LIKELY_SCENARIOS,
-						UNIFORM_MULTIPLICITY,
-						CALCULATE_EEV);
-				printf("done with test_Queue()\n");
-
-				/* Practice Queue */
-				vector< vector<int> > Queue;
-				vector<int> timestage_1;
-				vector<int> timestage_2;
-				vector<int> timestage_3;
-				timestage_1.push_back(0);
-				timestage_2.push_back(1);
-				timestage_2.push_back(2);
-				timestage_3.push_back(3);
-				timestage_3.push_back(4);
-				timestage_3.push_back(5);
-				timestage_3.push_back(6);
-				Queue.push_back(timestage_1);
-				Queue.push_back(timestage_2);
-				Queue.push_back(timestage_3);
-			}
-
-	
+			
 		/* some perparation of input parameters for prepare_efgs() */
 			int prep_status = -1;
 			double efgs = 0;
@@ -446,29 +300,7 @@ double optimization_time_main_start = get_cpu_time();
 			vector< vector<int> > Queue;
 
 			if (print_main_functions == true) printf("master: prepare_efgs() function calling\n");
-			ScenarioTree stree = prepare_efgs(
-					PROBLEM_CLASS.c_str(),
-					parameter_file.str().c_str(),
-					N_INSTANCES,
-					result_file.str().c_str(),
-					MAX_NUM_NODES_IN_A_PROBLEM,
-					LB_STOP_CR,
-					LB_STOP_TH,
-					partition_file.str().c_str(),
-					block_id, 
-					EFGS_type, 
-					UB_STOP_CR,
-					UB_STOP_TH,
-					UB_SOL_PARAM,
-					rank,
-					SOLVE_FULL_PROB,
-					EQUALLY_LIKELY_SCENARIOS,
-					UNIFORM_MULTIPLICITY,
-					CALCULATE_EEV,
-					rhs_contribution,
-					efgs,
-					optimization_time,
-					Queue);
+			ScenarioTree stree = prepare_efgs(); // function that does some pre-processing for the SMIP problem
 			printf("master: prepare_efgs() efgs=%f, optimization_time=%f\n", efgs, optimization_time);	
 		
 			if (print_main_functions == true)
@@ -648,31 +480,7 @@ double optimization_time_main_start = get_cpu_time();
 			n_shutdown++;
 			printf("num_shutdown=%d\n", n_shutdown);
 		}
-
-
-		/* EGSO MASTER, finishing up
-		 * ------------------------------------------------------------------------
-		 * ------------------------------------------------------------------------
-		 */
-		/*
-			 std::cout<< "Master time:" << get_cpu_time()- master_time<<std::endl;
-
-			 std::ofstream final_result_file( RESULT_FILE.c_str() ) ;
-		// concatenate the result files from each worker
-		for (int worker_id = 1; worker_id < nproc; worker_id++)
-		{
-		std::ostringstream result_filename;
-		result_filename << RESULT_FILE << "." << worker_id;
-		std::ifstream result_file( result_filename.str().c_str() ) ;
-
-		final_result_file << result_file.rdbuf();
-		}
-		final_result_file.close();
-
-		cout << "Summarizing result file for progress plots..." << flush;
-		double total_time = progressSummary(RESULT_FILE.c_str(), nproc);
-		cout << "DONE" << endl;
-		*/
+	
 	}
 	/* EGSO WORKER
 	 * --------------------------------------------------------------------------
@@ -704,32 +512,7 @@ double optimization_time_main_start = get_cpu_time();
 						worker_mode_EGSO = false;
 					}
 					else {
-						std::ostringstream parameter_file, partition_file, result_file;
-						parameter_file << PARAMETER_FILE << "." << rank;
-						result_file << RESULT_FILE << "." << rank;
-						partition_file << PARTITION_FILE << "." << rank;
-						// solve my_SP sub-problem
-						njobs[rank]++;
-						std::ostringstream runCMD;
-						runCMD	<< EXE_BOUNDING.c_str() << " " 
-							<< PROBLEM_CLASS.c_str() << " "
-							<< parameter_file.str().c_str() << " "
-							<< N_INSTANCES << " "
-							<< result_file.str().c_str() << " "
-							<< MAX_NUM_NODES_IN_A_PROBLEM << " "
-							<< LB_STOP_CR << " " 
-							<< LB_STOP_TH << " "
-							<< partition_file.str().c_str() << " "
-							<< param.block_id << " "
-							<< param.EFGS_type << " "
-							<< UB_STOP_CR << " "
-							<< UB_STOP_TH << " "
-							<< UB_SOL_PARAM << " "
-							<< rank << " "
-							<< SOLVE_FULL_PROB << " "
-							<< EQUALLY_LIKELY_SCENARIOS << " "
-							<< UNIFORM_MULTIPLICITY << " "
-							<< param.EEV_indicator;
+						// run command to perform optimizationi, will be run in parallel
 
 						if (param.EFGS_type != 0)
 							std::cout << "Worker " << rank << " (job " << njobs[rank] << ") contains an EFGS calculation." << std::endl;
@@ -810,62 +593,7 @@ double optimization_time_main_start = get_cpu_time();
 						double optimization_time_contribution = 0;
 
 						/* Setting up stree */
-						std::ostringstream parameter_file, partition_file, result_file;
-						parameter_file << PARAMETER_FILE << "." << rank;
-						result_file << RESULT_FILE << "." << rank;
-						partition_file << PARTITION_FILE << "." << rank;
-						/*
-							 ScenarioTree stree = generate_ScenarioTree(
-							 PROBLEM_CLASS.c_str(),
-							 parameter_file.str().c_str(),
-							 N_INSTANCES,
-							 result_file.str().c_str(),
-							 MAX_NUM_NODES_IN_A_PROBLEM,
-							 LB_STOP_CR,
-							 LB_STOP_TH,
-							 partition_file.str().c_str(),
-							 block_id, 
-							 EFGS_type, 
-							 UB_STOP_CR,
-							 UB_STOP_TH,
-							 UB_SOL_PARAM,
-							 rank,
-							 SOLVE_FULL_PROB,
-							 EQUALLY_LIKELY_SCENARIOS,
-							 UNIFORM_MULTIPLICITY,
-							 CALCULATE_EEV);
-							 printf("worker: ");
-							 print_problem_settings( *(stree.Asettings) );				
-							 */
-						/* Call the worker function */
-						int worker_status = -1;
-						worker_status = node_solve_timestage_method(
-								PROBLEM_CLASS.c_str(),
-								parameter_file.str().c_str(),
-								N_INSTANCES,
-								result_file.str().c_str(),
-								MAX_NUM_NODES_IN_A_PROBLEM,
-								LB_STOP_CR,
-								LB_STOP_TH,
-								partition_file.str().c_str(),
-								block_id, 
-								EFGS_type, 
-								UB_STOP_CR,
-								UB_STOP_TH,
-								UB_SOL_PARAM,
-								rank,
-								SOLVE_FULL_PROB,
-								EQUALLY_LIKELY_SCENARIOS,
-								UNIFORM_MULTIPLICITY,
-								CALCULATE_EEV,
-
-								rank,
-								node_ID,
-								rhs_contribution_update,
-								EFGS_MIP_gap,
-								efgs_contribution,
-								rhs_contribution_return,
-								optimization_time_contribution);
+						// calling optimization function which will be run in parallel across multiple processes
 
 						if (print_mw_signals == true)
 						{
