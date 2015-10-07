@@ -1,3 +1,9 @@
+//  Contains mpi code to compute upper and lower bounds for Stochastic 
+//  Multi-Stage Integer Programs based on Professor Sandikci's 
+//  Scenario Decomposition
+//  Some of the functions have been removed due to my professor's wish 
+//  to keep certain elements of his research private.
+
 #include <iomanip>
 #include <mpi.h>
 #include <RandomLib/Random.hpp>
@@ -148,14 +154,16 @@ double optimization_time_main_start = get_cpu_time();
 	MPI_Type_commit (&obj_type_EFGS_master_to_worker);	
 
 	int blocks_EFGS_w_to_m[5] = {1,1,1,1,1};
-	MPI_Datatype types_EFGS_w_to_m[5] = {MPI_INT, MPI_FLOAT, MPI_DOUBLE, MPI_DOUBLE, MPI_INT};
+	MPI_Datatype types_EFGS_w_to_m[5] = {MPI_INT, MPI_FLOAT, MPI_DOUBLE, 
+		MPI_DOUBLE, MPI_INT};
 	MPI_Aint displacements_EFGS_w_to_m[5];
 
 	displacements_EFGS_w_to_m[0] = static_cast<MPI_Aint>(0);
 	displacements_EFGS_w_to_m[1] = int_size;
 	displacements_EFGS_w_to_m[2] = int_size + float_size;
 	displacements_EFGS_w_to_m[3] = int_size + float_size + double_size;
-	displacements_EFGS_w_to_m[4] = int_size + float_size + double_size + double_size;
+	displacements_EFGS_w_to_m[4] = int_size + float_size + double_size 
+		+ double_size;
 
 	MPI_Datatype obj_type_EFGS_worker_to_master;
 	MPI_Type_struct (5, blocks_EFGS_w_to_m, displacements_EFGS_w_to_m, 
@@ -168,54 +176,10 @@ double optimization_time_main_start = get_cpu_time();
 	 */
 	if (rank == 0){	// load balancer
 
-		
-		double master_time =get_cpu_time();
+		// removed code which populates vector<int> indicator_efgs, as well
+		// as code which computes the lower bound parallely due to Professor
+		// Sandikci's wishes to keep that code private.
 
-		// All subproblems will compute EGSO; but only a pre-defined fraction of the subproblems will also compute EFGS
-		// Randomly select those that will also compute EFGS
-		std::vector<int> SP_indices;
-		std::vector<unsigned short> indicator_efgs(N_SUBPROBLEMS, 0);	// fill a vector of size=N_SUBPROBLEMS with value=0
-		RandomLib::Random r;		// create random number object
-		r.Reseed(UB_SEED);	// seed with a "unique" seed
-		//	std::cout << "Using " << r.Name() << "\n"
-		//		  << "with seed " << r.SeedString() << "\n";
-
-		// fill in the vector of scenario indices
-		for (int i = 0; i < N_SUBPROBLEMS; i++)
-			SP_indices.push_back(i);
-
-		//create a random permutation of the elements of the 'population' vector
-		std::random_shuffle(SP_indices.begin(), SP_indices.end(), r);
-
-		int n_efgs;
-		if (UB_FRACTION <= 1.0)
-		{
-			n_efgs = ceil( UB_FRACTION * N_SUBPROBLEMS);
-			if (n_efgs > 1000)	// we solve efgs for UB_FRACTION of group subproblems up to a maximum of 10000
-				n_efgs = 1000;
-
-			for (int i = 0; i < n_efgs; i++)
-			{
-				indicator_efgs[SP_indices[i]] = UB_SOL_TYPE; //the first n_efgs entries in the shuffled SP_indices will compute EFGS
-				efgs_subproblems.push_back(SP_indices[i]); // add the block_id selected to compute upper bound to vector which
-																									 // keeps track of them for later use 
-			}
-		}
-		else
-		{
-			n_efgs = floor( UB_FRACTION );
-
-			for (int i = 0; i < n_efgs; i++)
-			{
-				efgs_subproblems.push_back(SP_indices[i]);
-			}
-
-			double fraction_efgs_right_away = 0.10;
-			for (int i = 0; i < ceil(fraction_efgs_right_away * n_efgs); i++)	// send 10% of efgs problem right away
-				indicator_efgs[SP_indices[i]] = UB_SOL_TYPE; //the first n_efgs entries in the shuffled SP_indices will compute EFGS
-			for (int i = 0; i < n_efgs - ceil(fraction_efgs_right_away * n_efgs); i++)	// send the remaining 90% of efgs problem at the very end
-				indicator_efgs[SP_indices[N_SUBPROBLEMS-i-1]] = UB_SOL_TYPE; //the last n_efgs entries in the shuffled SP_indices will compute EFGS
-		}
 
 		/* Send SWITCH_EFGS_SIGNAL to all worker nodes */
 		num_switch_mode = 0;
@@ -239,11 +203,13 @@ double optimization_time_main_start = get_cpu_time();
 					<< ", num_workers: " << num_workers << endl;
 			}
 
-			/* now send a SLEEP signal, so that worker requests are only those of the EGSO mode */
+			/* now send a SLEEP signal, so that worker requests are only those of 
+			 * the EGSO mode */
 			/* No longer need to send SLEEP signal, worker goes to sleep automatically
 				 param_EFGS param_efgs_send;
 				 param_efgs_send.master_to_worker_signal = SLEEP;
-				 MPI_Send (&param_efgs_send, 1, obj_type_EFGS, requestor, 0, MPI_COMM_WORLD); 
+				 MPI_Send (&param_efgs_send, 1, obj_type_EFGS, requestor, 
+				 0, MPI_COMM_WORLD); 
 				 */
 			if (print_mw_signals == true)
 			{
@@ -257,16 +223,19 @@ double optimization_time_main_start = get_cpu_time();
 		{
 			if (print_mw_signals == true) 
 			{
-				cout << "master: sending signal AWAKE to worker, switch EFGS mode: " << k << endl;
+				cout << "master: sending signal AWAKE to worker, switch EFGS mode: " 
+					<< k << endl;
 				printf("k: %d, num_workers: %d\n", k, num_workers);
 			}
 			param_EFGS_master_to_worker param_efgs_send;
 			param_efgs_send.master_to_worker_signal = AWAKE;
-			MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, k, 0, MPI_COMM_WORLD);
+			MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, k, 
+					0, MPI_COMM_WORLD);
 
 			if (print_mw_signals == true) 
 			{
-				cout << "master: sent signal AWAKE to worker, switch EFGS mode: " << k << endl;
+				cout << "master: sent signal AWAKE to worker, switch EFGS mode: " 
+					<< k << endl;
 			}
 		}
 
@@ -276,10 +245,12 @@ double optimization_time_main_start = get_cpu_time();
 		 */
 
 		/* NOTE: add efgs_subproblems */
-		int master_loop = efgs_subproblems.size(); //perform this many upper bounding calculations
+		int master_loop = efgs_subproblems.size(); //perform this many 
+		//upper bounding calculations
 		for (int i = 0; i < master_loop; i++)
 		{
-			if (print_mpi_signals == true) printf("i:%d, master_loop:%d\n", i, master_loop);
+			if (print_mpi_signals == true) printf("i:%d, master_loop:%d\n", 
+					i, master_loop);
 
 			/* First generate instances of needed variables. TODO */
 			int block_id = efgs_subproblems.back();
@@ -299,8 +270,11 @@ double optimization_time_main_start = get_cpu_time();
 			double optimization_time = 0;
 			vector< vector<int> > Queue;
 
-			if (print_main_functions == true) printf("master: prepare_efgs() function calling\n");
-			ScenarioTree stree = prepare_efgs(); // function that does some pre-processing for the SMIP problem
+			if (print_main_functions == true) {
+				printf("master: prepare_efgs() function calling\n");
+			}
+			ScenarioTree stree = prepare_efgs(); // function that does some 
+				// pre-processing for the SMIP problem
 			printf("master: prepare_efgs() efgs=%f, optimization_time=%f\n", efgs, optimization_time);	
 		
 			if (print_main_functions == true)
@@ -315,7 +289,8 @@ double optimization_time_main_start = get_cpu_time();
 			/* Iterate through number of time stages */
 			int num_timestages = Queue.size();
 
-			if (print_mpi_signals == true) cout << "num_timestages: " << num_timestages << endl;
+			if (print_mpi_signals == true) cout << "num_timestages: " 
+				<< num_timestages << endl;
 
 			for (int j = 0; j < num_timestages; j++)
 			{
@@ -345,7 +320,8 @@ double optimization_time_main_start = get_cpu_time();
 					{
 						if (print_mw_signals == true)
 						{
-							cout << "master received signal REQUEST from worker: " << requestor << endl;
+							cout << "master received signal REQUEST from worker: " 
+								<< requestor << endl;
 						}
 						/* if no more jobs */
 						if (Queue[j].empty() == true)
@@ -355,7 +331,8 @@ double optimization_time_main_start = get_cpu_time();
 							param_efgs_send.master_to_worker_signal = SLEEP;
 
 							/* send the sleep signal */
-							MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, requestor, 0, MPI_COMM_WORLD);
+							MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, 
+									requestor, 0, MPI_COMM_WORLD);
 							if (print_mw_signals == true)
 							{
 								cout << "master: sending signal SLEEP to worker: " 
@@ -373,9 +350,11 @@ double optimization_time_main_start = get_cpu_time();
 							param_efgs_send.node_ID = node_ID;
 							Queue[j].pop_back();
 							param_efgs_send.block_id = block_id;
-							param_efgs_send.rhs_contribution_update = rhs_contribution[stree.node_row_start(stree.ancestor(node_ID))];
+							param_efgs_send.rhs_contribution_update = 
+								rhs_contribution[stree.node_row_start(stree.ancestor(node_ID))];
 
-							MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, requestor, 0, MPI_COMM_WORLD);
+							MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, 
+									requestor, 0, MPI_COMM_WORLD);
 							if (print_mw_signals == true)
 							{
 								cout << "master; sending signal SUBMIT to worker: " 
@@ -388,16 +367,19 @@ double optimization_time_main_start = get_cpu_time();
 					{
 						if (print_mw_signals == true)
 						{
-							cout << "master received signal ANSWER from worker: " << requestor << endl;
+							cout << "master received signal ANSWER from worker: " 
+								<< requestor << endl;
 						}
 						efgs += param_efgs_recv.efgs_contribution;
 						optimization_time += param_efgs_recv.optimization_time_contribution;
 						int node_ID = param_efgs_recv.node_ID;
-						rhs_contribution[stree.node_row_start(node_ID)] = param_efgs_recv.rhs_contribution_return;
+						rhs_contribution[stree.node_row_start(node_ID)] 
+							= param_efgs_recv.rhs_contribution_return;
 						if (print_contributions == true)
 						{
 							printf("master: efgs=%f, efgs_contribution=%f, optimization_time_contribution=%f\n"
-									, efgs, param_efgs_recv.efgs_contribution, param_efgs_recv.optimization_time_contribution);
+									, efgs, param_efgs_recv.efgs_contribution, 
+									param_efgs_recv.optimization_time_contribution);
 						}
 						/* note: EFGS_MPI_gap I don't use */
 					}
@@ -421,7 +403,8 @@ double optimization_time_main_start = get_cpu_time();
 					}
 					param_EFGS_master_to_worker param_efgs_send;
 					param_efgs_send.master_to_worker_signal = AWAKE;
-					MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, k, 0, MPI_COMM_WORLD);
+					MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, 
+							k, 0, MPI_COMM_WORLD);
 					if (print_mw_signals == true)
 					{
 						cout << "master: sent signal AWAKE to worker: " << k << endl;
@@ -449,7 +432,8 @@ double optimization_time_main_start = get_cpu_time();
 			}
 		}
 		optimization_time_efgs_min = optimization_time_candidates[efgs_min_index];
-		cout << "efgs_min: " << efgs_min << " optimization_time: " << optimization_time_efgs_min << endl;
+		cout << "efgs_min: " << efgs_min << " optimization_time: " 
+			<< optimization_time_efgs_min << endl;
 
 
 		// all sub-problems have been sent out, start sending shutdown signals
@@ -457,7 +441,8 @@ double optimization_time_main_start = get_cpu_time();
 		while (n_shutdown < nproc-1){
 			// wait until we get a request from a worker
 			param_EFGS_worker_to_master param_efgs_recv;
-			MPI_Recv (&param_efgs_recv, 1, obj_type_EFGS_worker_to_master, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+			MPI_Recv (&param_efgs_recv, 1, obj_type_EFGS_worker_to_master, 
+					MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
 			if (print_mw_signals == true)
 			{
 				cout << "master awaiting contact from worker, to send SHUTDOWN signal" 
@@ -470,10 +455,12 @@ double optimization_time_main_start = get_cpu_time();
 			// send the requestor a shutdown signal
 			param_EFGS_master_to_worker param_efgs_send;
 			param_efgs_send.master_to_worker_signal = SHUTDOWN;
-			MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, requestor, 0, MPI_COMM_WORLD);
+			MPI_Send (&param_efgs_send, 1, obj_type_EFGS_master_to_worker, 
+					requestor, 0, MPI_COMM_WORLD);
 			if (print_mw_signals == true)
 			{
-				cout << "master: sending signal SHUTDOWN to worker: " << requestor << endl;
+				cout << "master: sending signal SHUTDOWN to worker: " 
+					<< requestor << endl;
 			}
 
 			// we have sent a shutdown signal to another worker
@@ -503,7 +490,8 @@ double optimization_time_main_start = get_cpu_time();
 
 					if (param.block_id == ALLDONE){
 						// no more sub-problems to solve
-						printf("Worker %d worked on %d tasks and got shutdown signal\n", rank, njobs[rank]);
+						printf("Worker %d worked on %d tasks and got shutdown signal\n", 
+								rank, njobs[rank]);
 						break;
 					}
 					else if (param.block_id == SWITCH_EFGS_MODE) /* switching signal */
@@ -515,15 +503,15 @@ double optimization_time_main_start = get_cpu_time();
 						// run command to perform optimizationi, will be run in parallel
 
 						if (param.EFGS_type != 0)
-							std::cout << "Worker " << rank << " (job " << njobs[rank] << ") contains an EFGS calculation." << std::endl;
+							std::cout << "Worker " << rank << " (job " << njobs[rank] 
+								<< ") contains an EFGS calculation." << std::endl;
 						if (param.EEV_indicator == 1)
-							std::cout << "Worker " << rank << " (job " << njobs[rank] << ") contains VSS calculation." << std::endl;
-						//printf("Worker %d (job %d) will run: %s\n", rank, njobs[rank], runCMD.str().c_str());
+							std::cout << "Worker " << rank << " (job " << njobs[rank] 
+								<< ") contains VSS calculation." << std::endl;
 						system(runCMD.str().c_str());
 						// sleep(1);
 					}
 				}		
-				//		std::cout << "cumulative worker " << rank<< " time:" << get_cpu_time() - time_begin << std::endl;
 
 				/* EFGS WORKER
 				 * ------------------------------------------------------------------------
@@ -537,7 +525,8 @@ double optimization_time_main_start = get_cpu_time();
 				{
 					// wait for awake signal 
 					param_EFGS_master_to_worker param_efgs_recv;
-					MPI_Recv (&param_efgs_recv, 1, obj_type_EFGS_master_to_worker, 0, 0, MPI_COMM_WORLD, &status);
+					MPI_Recv (&param_efgs_recv, 1, obj_type_EFGS_master_to_worker, 
+							0, 0, MPI_COMM_WORLD, &status);
 					if (print_mw_signals == true)
 					{
 						cout << "worker: " << rank 
@@ -561,7 +550,8 @@ double optimization_time_main_start = get_cpu_time();
 					param_EFGS_worker_to_master param_efgs_send;
 					param_efgs_send.worker_to_master_signal = REQUEST;
 
-					MPI_Send (&param_efgs_send, 1, obj_type_EFGS_worker_to_master, 0, 0, MPI_COMM_WORLD);
+					MPI_Send (&param_efgs_send, 1, obj_type_EFGS_worker_to_master, 
+							0, 0, MPI_COMM_WORLD);
 					if (print_mw_signals == true)
 					{
 						cout << "worker: " << rank << " sent signal REQUEST: " 
@@ -570,7 +560,8 @@ double optimization_time_main_start = get_cpu_time();
 
 					/* receive response from master */
 					param_EFGS_master_to_worker param_efgs_recv;
-					MPI_Recv (&param_efgs_recv, 1, obj_type_EFGS_master_to_worker, 0, 0, MPI_COMM_WORLD, &status);
+					MPI_Recv (&param_efgs_recv, 1, obj_type_EFGS_master_to_worker, 
+							0, 0, MPI_COMM_WORLD, &status);
 					if (print_mw_signals == true)
 					{
 						cout << "worker: " << rank << " received response from master" << endl
@@ -584,7 +575,8 @@ double optimization_time_main_start = get_cpu_time();
 						/* Have a node to solve */
 						/* load parameters */
 						int node_ID = param_efgs_recv.node_ID;
-						float rhs_contribution_update = param_efgs_recv.rhs_contribution_update;
+						float rhs_contribution_update 
+							= param_efgs_recv.rhs_contribution_update;
 						int block_id = param_efgs_recv.block_id;
 						int EFGS_type = 0;				
 						double EFGS_MIP_gap = 0;
@@ -593,7 +585,9 @@ double optimization_time_main_start = get_cpu_time();
 						double optimization_time_contribution = 0;
 
 						/* Setting up stree */
-						// calling optimization function which will be run in parallel across multiple processes
+						/* calling optimization function which will be run 
+						 * in parallel across multiple processes
+						 */
 
 						if (print_mw_signals == true)
 						{
@@ -606,9 +600,11 @@ double optimization_time_main_start = get_cpu_time();
 						param_efgs_send.node_ID = node_ID;
 						param_efgs_send.efgs_contribution = efgs_contribution;
 						param_efgs_send.rhs_contribution_return = rhs_contribution_return;
-						param_efgs_send.optimization_time_contribution = optimization_time_contribution;
+						param_efgs_send.optimization_time_contribution 
+							= optimization_time_contribution;
 
-						MPI_Send (&param_efgs_send, 1, obj_type_EFGS_worker_to_master, 0, 0, MPI_COMM_WORLD);
+						MPI_Send (&param_efgs_send, 1, obj_type_EFGS_worker_to_master, 
+								0, 0, MPI_COMM_WORLD);
 						if (print_mw_signals == true)
 						{
 							cout << "worker: " << rank << " sent signal ANSWER: " 
@@ -622,7 +618,8 @@ double optimization_time_main_start = get_cpu_time();
 						{
 							/* wait for AWAKE signal */
 							param_EFGS_master_to_worker param_efgs_recv;
-							MPI_Recv (&param_efgs_recv, 1, obj_type_EFGS_master_to_worker, 0, 0, MPI_COMM_WORLD, &status);
+							MPI_Recv (&param_efgs_recv, 1, obj_type_EFGS_master_to_worker, 
+									0, 0, MPI_COMM_WORLD, &status);
 							if (print_mw_signals == true)
 							{
 								cout << "worker: " << rank 
